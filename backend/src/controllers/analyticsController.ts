@@ -1,21 +1,20 @@
 import { Request, Response } from 'express';
-import mongoose from 'mongoose';
-import TestAttempt from '../models/TestAttempt';
-import Question from '../models/Question';
+import { testAttemptsCollection } from '../models/TestAttempt';
+import { questionsCollection } from '../models/Question';
 
 export const getDashboardAnalytics = async (req: Request, res: Response): Promise<void> => {
   try {
     const { userId } = req.params;
 
-    if (typeof userId !== 'string' || !mongoose.Types.ObjectId.isValid(userId as string)) {
+    if (typeof userId !== 'string' || !userId) {
       res.status(400).json({ error: 'Invalid user ID' });
       return;
     }
 
     // Fetch all test attempts for the user
-    const attempts = await TestAttempt.find({ userId }).populate('answers.questionId');
+    const attemptsSnapshot = await testAttemptsCollection.where('userId', '==', userId).get();
 
-    if (attempts.length === 0) {
+    if (attemptsSnapshot.empty) {
       res.status(404).json({ message: 'No test attempts found for this user.' });
       return;
     }
@@ -33,18 +32,54 @@ export const getDashboardAnalytics = async (req: Request, res: Response): Promis
       Hard: { total: 0, correct: 0 }
     };
 
+    const attemptsData = attemptsSnapshot.docs.map(doc => {
+        const data = doc.data();
+        let completedAtDate;
+        if (data.completedAt && data.completedAt.toDate) {
+             completedAtDate = data.completedAt.toDate();
+        } else if (data.completedAt) {
+             completedAtDate = new Date(data.completedAt);
+        } else {
+             completedAtDate = new Date(); // fallback
+        }
+        return {
+            date: completedAtDate,
+            score: data.totalScore,
+            answers: data.answers || []
+        }
+    });
+
     // Trend metrics
-    const performanceTrends = attempts.map(attempt => ({
-      date: attempt.completedAt,
-      score: attempt.totalScore
+    const performanceTrends = attemptsData.map(attempt => ({
+      date: attempt.date,
+      score: attempt.score
     })).sort((a, b) => a.date.getTime() - b.date.getTime());
 
-    attempts.forEach(attempt => {
-      totalScore += attempt.totalScore;
+    // We need to fetch all relevant questions to build the topic metrics cache
+    const uniqueQuestionIds = new Set<string>();
+    attemptsData.forEach(attempt => {
+        attempt.answers.forEach((ans: any) => uniqueQuestionIds.add(ans.questionId));
+    });
+
+    // Fetch question metadata
+    const questionCache: Record<string, any> = {};
+    if (uniqueQuestionIds.size > 0) {
+        // Firestore can only batch 'in' queries up to 10 elements, so instead 
+        // if large we just pull all questions or split into chunks. 
+        // For simplicity we will fetch individual docs here in parallel, or get all questions if it's faster.
+        // Given small scale expected, pulling all is fine.
+        const allQuestionsSnapshot = await questionsCollection.get();
+        allQuestionsSnapshot.forEach(qDoc => {
+             questionCache[qDoc.id] = qDoc.data();
+        });
+    }
+
+    attemptsData.forEach(attempt => {
+      totalScore += attempt.score;
       totalQuestions += attempt.answers.length;
 
       attempt.answers.forEach((ans: any) => {
-        const question = ans.questionId;
+        const question = questionCache[ans.questionId];
         if (!question) return;
 
         const topic = question.topic || 'General';
@@ -55,7 +90,7 @@ export const getDashboardAnalytics = async (req: Request, res: Response): Promis
           topicStats[topic] = { total: 0, correct: 0, timeSpent: 0 };
         }
         topicStats[topic].total += 1;
-        topicStats[topic].timeSpent += ans.timeSpentSeconds;
+        topicStats[topic].timeSpent += (ans.timeSpentSeconds || 0);
         if (ans.isCorrect) {
           topicStats[topic].correct += 1;
         }
@@ -76,7 +111,7 @@ export const getDashboardAnalytics = async (req: Request, res: Response): Promis
     const radarData = Object.keys(topicStats).map(topic => {
       const stats = topicStats[topic];
       const accuracy = stats.total > 0 ? (stats.correct / stats.total) * 100 : 0;
-      return { subject: topic, A: accuracy, fullMark: 100 };
+      return { subject: topic, A: Math.round(accuracy), fullMark: 100 };
     });
 
     // 2. Pie Chart Data (Accuracy by Difficulty)
@@ -84,14 +119,14 @@ export const getDashboardAnalytics = async (req: Request, res: Response): Promis
       .filter(diff => difficultyStats[diff].total > 0)
       .map(diff => {
         const stats = difficultyStats[diff];
-        return { name: diff, value: stats.total > 0 ? (stats.correct / stats.total) * 100 : 0 };
+        return { name: diff, value: stats.total > 0 ? Math.round((stats.correct / stats.total) * 100) : 0 };
     });
 
     // 3. Time Spent Analysis
     const timeSpentAnalysis = Object.keys(topicStats).map(topic => {
       const stats = topicStats[topic];
       const avgTime = stats.total > 0 ? (stats.timeSpent / stats.total) : 0;
-      return { topic, averageTimeSeconds: avgTime };
+      return { topic, averageTimeSeconds: Math.round(avgTime) };
     });
 
     // Determine Strengths and Weaknesses
@@ -106,8 +141,8 @@ export const getDashboardAnalytics = async (req: Request, res: Response): Promis
     });
 
     res.status(200).json({
-      overallAccuracy: (totalScore / totalQuestions) * 100,
-      totalAttempts: attempts.length,
+      overallAccuracy: totalQuestions > 0 ? Math.round((totalScore / totalQuestions) * 100) : 0,
+      totalAttempts: attemptsData.length,
       radarData,
       pieData,
       performanceTrends,

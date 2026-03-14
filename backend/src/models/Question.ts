@@ -1,6 +1,7 @@
-import mongoose, { Schema, Document } from 'mongoose';
+import { db } from '../server';
 
-export interface IQuestion extends Document {
+export interface IQuestion {
+  id?: string;
   text: string;
   options: string[];
   correctOptionIndex: number;
@@ -8,12 +9,4 @@ export interface IQuestion extends Document {
   difficulty: 'Easy' | 'Medium' | 'Hard';
 }
 
-const QuestionSchema: Schema = new Schema({
-  text: { type: String, required: true },
-  options: [{ type: String, required: true }],
-  correctOptionIndex: { type: Number, required: true },
-  topic: { type: String, required: true },
-  difficulty: { type: String, enum: ['Easy', 'Medium', 'Hard'], required: true }
-});
-
-export default mongoose.model<IQuestion>('Question', QuestionSchema);
+export const questionsCollection = db.collection('questions');

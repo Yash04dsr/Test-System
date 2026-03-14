@@ -1,7 +1,8 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import Question from '../models/Question';
-import TestAttempt, { IAnswer } from '../models/TestAttempt';
+import { questionsCollection } from '../models/Question';
+import { testAttemptsCollection, IAnswer } from '../models/TestAttempt';
+import admin from 'firebase-admin';
 
 const submitTestSchema = z.object({
   userId: z.string().min(1, 'User ID is required'),
@@ -29,34 +30,38 @@ export const submitTest = async (req: Request, res: Response): Promise<void> => 
 
     // Evaluate each answer
     for (const ans of answers) {
-      const question = await Question.findById(ans.questionId);
-      if (!question) continue;
+      const questionDoc = await questionsCollection.doc(ans.questionId).get();
+      if (!questionDoc.exists) continue;
+      
+      const question = questionDoc.data();
+      if (question) {
+        let isCorrect = false;
+        if (ans.selectedOptionIndex !== null && ans.selectedOptionIndex === question.correctOptionIndex) {
+          isCorrect = true;
+          totalScore += 1; // Assuming +1 for correct
+        }
 
-      let isCorrect = false;
-      if (ans.selectedOptionIndex !== null && ans.selectedOptionIndex === question.correctOptionIndex) {
-        isCorrect = true;
-        totalScore += 1; // Assuming +1 for correct
+        evaluatedAnswers.push({
+          questionId: questionDoc.id,
+          selectedOptionIndex: ans.selectedOptionIndex,
+          timeSpentSeconds: ans.timeSpentSeconds,
+          isCorrect
+        });
       }
-
-      evaluatedAnswers.push({
-        questionId: question._id,
-        selectedOptionIndex: ans.selectedOptionIndex,
-        timeSpentSeconds: ans.timeSpentSeconds,
-        isCorrect
-      });
     }
 
-    const testAttempt = new TestAttempt({
+    const testAttemptData = {
       userId,
       answers: evaluatedAnswers,
-      totalScore
-    });
+      totalScore,
+      completedAt: admin.firestore.FieldValue.serverTimestamp()
+    };
 
-    await testAttempt.save();
+    const newAttemptRef = await testAttemptsCollection.add(testAttemptData);
 
     res.status(201).json({
       message: 'Test submitted and evaluated successfully',
-      attemptId: testAttempt._id,
+      attemptId: newAttemptRef.id,
       score: totalScore
     });
   } catch (error) {
@@ -67,15 +72,18 @@ export const submitTest = async (req: Request, res: Response): Promise<void> => 
 
 export const getQuestions = async (req: Request, res: Response): Promise<void> => {
   try {
-    const questions = await Question.find({});
+    const questionsSnapshot = await questionsCollection.get();
     // Exclude correctOptionIndex for actual test taking
-    const safeQuestions = questions.map(q => ({
-      _id: q._id,
-      text: q.text,
-      options: q.options,
-      topic: q.topic,
-      difficulty: q.difficulty
-    }));
+    const safeQuestions = questionsSnapshot.docs.map(doc => {
+      const q = doc.data();
+      return {
+        _id: doc.id,
+        text: q.text,
+        options: q.options,
+        topic: q.topic,
+        difficulty: q.difficulty
+      };
+    });
     res.status(200).json(safeQuestions);
   } catch (error) {
     res.status(500).json({ error: 'Internal server error' });
