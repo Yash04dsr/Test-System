@@ -1,1 +1,8 @@
 .vercel
+node_modules
+dist
+.env
+*.json
+!package.json
+!tsconfig.json
+!vercel.json

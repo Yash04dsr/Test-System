@@ -12,8 +12,13 @@ interface Question {
   text: string;
   options: string[];
   correctOptionIndex: number;
-  topic: string;
+  courseId: string;
   difficulty: string;
+}
+
+interface Course {
+  _id: string;
+  title: string;
 }
 
 export default function AdminQuestionsPage() {
@@ -26,25 +31,32 @@ export default function AdminQuestionsPage() {
   const [text, setText] = useState('');
   const [options, setOptions] = useState(['', '', '', '']);
   const [correctIndex, setCorrectIndex] = useState(0);
-  const [topic, setTopic] = useState('');
+  const [courseId, setCourseId] = useState('');
   const [difficulty, setDifficulty] = useState('Medium');
+  const [courses, setCourses] = useState<Course[]>([]);
 
-  const fetchQuestions = async () => {
+  const fetchQuestionsAndCourses = async () => {
     setLoading(true);
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-      const res = await fetch(`${apiUrl}/api/tests/admin/questions`);
-      const data = await res.json();
-      if (!data.error) setQuestions(data);
+      const [qRes, cRes] = await Promise.all([
+        fetch(`${apiUrl}/api/tests/admin/questions`),
+        fetch(`${apiUrl}/api/courses`)
+      ]);
+      const qData = await qRes.json();
+      const cData = await cRes.json();
+      
+      if (!qData.error) setQuestions(qData);
+      if (!cData.error) setCourses(cData);
     } catch (err) {
-      toast.error("Failed to fetch questions from the server.");
+      toast.error("Failed to fetch data from the server.");
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchQuestions();
+    fetchQuestionsAndCourses();
   }, []);
 
   const openModal = (q?: Question) => {
@@ -53,22 +65,26 @@ export default function AdminQuestionsPage() {
       setText(q.text);
       setOptions([...q.options]);
       setCorrectIndex(q.correctOptionIndex);
-      setTopic(q.topic);
+      setCourseId(q.courseId || '');
       setDifficulty(q.difficulty);
     } else {
       setEditingQuestion(null);
       setText('');
       setOptions(['', '', '', '']);
       setCorrectIndex(0);
-      setTopic('');
+      setCourseId(courses.length > 0 ? courses[0]._id : '');
       setDifficulty('Medium');
     }
     setIsModalOpen(true);
   };
 
   const handleSave = async () => {
+    if (!courseId) {
+      toast.error("Please select a Course for this question.");
+      return;
+    }
     const payload = {
-      text, options, correctOptionIndex: correctIndex, topic, difficulty
+      text, options, correctOptionIndex: correctIndex, courseId, difficulty
     };
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
     const method = editingQuestion ? 'PUT' : 'POST';
@@ -84,7 +100,7 @@ export default function AdminQuestionsPage() {
       });
       setIsModalOpen(false);
       toast.success(editingQuestion ? "Question updated successfully!" : "New question added!");
-      fetchQuestions();
+      fetchQuestionsAndCourses();
     } catch (err) {
       toast.error("Failed to save the question. Please try again.");
     }
@@ -96,7 +112,7 @@ export default function AdminQuestionsPage() {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
       await fetch(`${apiUrl}/api/tests/questions/${id}`, { method: 'DELETE' });
       toast.success("Question deleted.");
-      fetchQuestions();
+      fetchQuestionsAndCourses();
     } catch (err) {
       toast.error("Failed to delete the question.");
     }
@@ -120,7 +136,7 @@ export default function AdminQuestionsPage() {
             <table className="w-full text-sm text-left">
               <thead className="bg-secondary/10 text-secondary-foreground uppercase text-xs">
                 <tr>
-                  <th className="px-6 py-4 rounded-tl-lg">Topic</th>
+                  <th className="px-6 py-4 rounded-tl-lg">Course</th>
                   <th className="px-6 py-4">Difficulty</th>
                   <th className="px-6 py-4">Question Text</th>
                   <th className="px-6 py-4 rounded-tr-lg text-right">Actions</th>
@@ -138,9 +154,11 @@ export default function AdminQuestionsPage() {
                   ))
                 ) : questions.length === 0 ? (
                   <tr><td colSpan={4} className="px-6 py-8 text-center text-secondary">No questions found in database.</td></tr>
-                ) : questions.map(q => (
+                ) : questions.map(q => {
+                  const courseNum = courses.find(c => c._id === q.courseId);
+                  return (
                   <tr key={q._id} className="hover:bg-secondary/5 transition-colors">
-                    <td className="px-6 py-4 font-medium whitespace-nowrap">{q.topic}</td>
+                    <td className="px-6 py-4 font-medium whitespace-nowrap">{courseNum ? courseNum.title : 'Legacy Topic'}</td>
                     <td className="px-6 py-4">
                       <span className={`px-2 py-1 rounded text-xs font-semibold ${
                         q.difficulty === 'Easy' ? 'bg-success/20 text-success' : 
@@ -159,7 +177,7 @@ export default function AdminQuestionsPage() {
                       </button>
                     </td>
                   </tr>
-                ))}
+                )})}
               </tbody>
             </table>
           </div>
@@ -176,8 +194,13 @@ export default function AdminQuestionsPage() {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Topic</label>
-                  <input type="text" value={topic} onChange={e => setTopic(e.target.value)} className="w-full p-2 bg-secondary/10 border border-secondary/20 rounded-md" placeholder="e.g. Physics" />
+                  <label className="text-sm font-medium">Assign to Course</label>
+                  <select value={courseId} onChange={e => setCourseId(e.target.value)} className="w-full p-2 bg-secondary/10 border border-secondary/20 rounded-md">
+                    <option value="" disabled>Select a Course...</option>
+                    {courses.map(c => (
+                      <option key={c._id} value={c._id}>{c.title}</option>
+                    ))}
+                  </select>
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Difficulty</label>

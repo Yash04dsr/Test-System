@@ -1,4 +1,4 @@
-import { db } from '../server';
+import { db } from '../config/firebase';
 import admin from 'firebase-admin';
 
 export interface IAnswer {

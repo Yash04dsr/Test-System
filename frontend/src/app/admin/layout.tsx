@@ -25,11 +25,25 @@ export default function AdminLayout({
     }
   }, [user, loading, router]);
 
-  // Keep rendering minimal until auth is verified
+  // Keep rendering layout skeletons until auth is verified
   if (loading || !user || user.role !== 'admin') {
     return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      <div className="flex min-h-screen bg-background text-foreground">
+        <Sidebar />
+        <div className="flex-1 flex flex-col">
+          <Topbar title="Administrator Portal" />
+          <main className="flex-1 p-6 md:p-8 overflow-y-auto w-full max-w-7xl mx-auto space-y-6">
+            <div className="animate-pulse space-y-6">
+              <div className="h-8 bg-secondary/20 rounded w-1/4"></div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="h-32 bg-secondary/20 rounded-xl"></div>
+                <div className="h-32 bg-secondary/20 rounded-xl"></div>
+                <div className="h-32 bg-secondary/20 rounded-xl"></div>
+              </div>
+              <div className="h-64 bg-secondary/20 rounded-xl"></div>
+            </div>
+          </main>
+        </div>
       </div>
     );
   }

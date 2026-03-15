@@ -80,10 +80,19 @@ export const getQuestions = async (req: Request, res: Response): Promise<void> =
         _id: doc.id,
         text: q.text,
         options: q.options,
-        topic: q.topic,
+        courseId: q.courseId,
         difficulty: q.difficulty
       };
     });
+
+    // Optionally filter by courseId
+    const courseId = req.query.courseId as string;
+    if (courseId) {
+       const filtered = safeQuestions.filter(q => q.courseId === courseId);
+       res.status(200).json(filtered);
+       return;
+    }
+
     res.status(200).json(safeQuestions);
   } catch (error) {
     res.status(500).json({ error: 'Internal server error' });
@@ -105,9 +114,9 @@ export const getAdminQuestions = async (req: Request, res: Response): Promise<vo
 
 export const createQuestion = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { text, options, correctOptionIndex, topic, difficulty } = req.body;
+    const { text, options, correctOptionIndex, courseId, difficulty } = req.body;
     const newDoc = await questionsCollection.add({
-      text, options, correctOptionIndex, topic, difficulty
+      text, options, correctOptionIndex, courseId, difficulty
     });
     res.status(201).json({ _id: newDoc.id, message: 'Question created' });
   } catch (error) {
@@ -119,9 +128,9 @@ export const updateQuestion = async (req: Request, res: Response): Promise<void>
   try {
     const { id } = req.params;
     if (typeof id !== 'string') throw new Error('Invalid ID');
-    const { text, options, correctOptionIndex, topic, difficulty } = req.body;
+    const { text, options, correctOptionIndex, courseId, difficulty } = req.body;
     await questionsCollection.doc(id).update({
-      text, options, correctOptionIndex, topic, difficulty
+      text, options, correctOptionIndex, courseId, difficulty
     });
     res.status(200).json({ message: 'Question updated' });
   } catch (error) {

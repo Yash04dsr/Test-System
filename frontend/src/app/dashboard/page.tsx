@@ -49,7 +49,7 @@ export default function DashboardPage() {
     aiStudyPlan: 'Loading AI generated strategy...'
   });
 
-  const [availableTopics, setAvailableTopics] = useState<string[]>([]);
+  const [enrolledCourses, setEnrolledCourses] = useState<{_id: string, title: string}[]>([]);
 
   const [loading, setLoading] = useState(true);
 
@@ -79,23 +79,41 @@ export default function DashboardPage() {
       .catch(err => console.error("Using fallback analytics data"))
       .finally(() => setLoading(false));
 
-    // Fetch available tests
-    fetch(`${apiUrl}/api/tests/questions`)
+    // Fetch available courses for this student
+    fetch(`${apiUrl}/api/courses`)
       .then(res => res.json())
-      .then(qData => {
-        if (Array.isArray(qData)) {
-          const topics = Array.from(new Set(qData.map((q: { topic: string }) => q.topic))) as string[];
-          setAvailableTopics(topics as string[]);
+      .then(cData => {
+        if (Array.isArray(cData)) {
+          const myCourses = cData.filter((c: { enrolledStudentIds?: string[] }) => c.enrolledStudentIds && c.enrolledStudentIds.includes(user.id));
+          setEnrolledCourses(myCourses);
         }
       })
-      .catch(err => console.error("Could not fetch available tests"));
-  }, [user, authLoading]);
+      .catch(err => console.error("Could not fetch available courses"));
+  }, [user, authLoading, router]);
 
-  // Only render if auth is fully initialized and user exists
+  // Only render fully if auth is initialized and user exists, otherwise show layout with skeleton
   if (authLoading || !user) {
     return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      <div className="flex min-h-screen bg-background text-foreground">
+        <Sidebar />
+        <div className="flex-1 flex flex-col">
+          <Topbar title="Results Dashboard" />
+          <main className="flex-1 p-6 md:p-8 overflow-y-auto w-full max-w-7xl mx-auto space-y-6">
+            <div className="flex justify-between items-end mb-6">
+              <div className="space-y-2">
+                <div className="h-8 bg-secondary/20 rounded w-64 animate-pulse"></div>
+                <div className="h-4 bg-secondary/20 rounded w-48 animate-pulse"></div>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-pulse">
+              <div className="h-[350px] bg-secondary/10 rounded-xl col-span-1 border border-border"></div>
+              <div className="h-[350px] bg-secondary/10 rounded-xl col-span-1 lg:col-span-2 border border-border"></div>
+              <div className="h-[300px] bg-secondary/10 rounded-xl col-span-1 border border-border"></div>
+              <div className="h-[300px] bg-secondary/10 rounded-xl col-span-1 lg:col-span-2 border border-border"></div>
+            </div>
+          </main>
+        </div>
       </div>
     );
   }
@@ -247,35 +265,32 @@ export default function DashboardPage() {
             
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pt-4">
-            {/* Available Tests */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Enrolled Courses */}
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.5 }}>
             <Card className="col-span-1 border-border shadow-sm">
               <CardHeader>
-                <CardTitle>Available Tests</CardTitle>
-                <p className="text-xs text-secondary-foreground">Topics ready for practice</p>
+                <CardTitle>My Courses</CardTitle>
+                <p className="text-xs text-secondary-foreground">Courses you are currently enrolled in</p>
               </CardHeader>
               <CardContent className="space-y-3">
-                {availableTopics.length === 0 ? (
-                  <p className="text-secondary text-sm">No tests available.</p>
-                ) : availableTopics.map((topic, i) => (
-                  <div key={i} className="flex justify-between items-center bg-secondary/10 p-3 rounded-lg border border-secondary/20">
-                    <span className="font-medium text-sm">{topic}</span>
-                    <Link href="/test">
-                      <Button size="sm" variant="outline" className="h-8">Start</Button>
+                {enrolledCourses.length === 0 ? (
+                  <p className="text-secondary text-sm">You are not enrolled in any courses yet.</p>
+                ) : enrolledCourses.map((course) => (
+                  <div key={course._id} className="flex justify-between items-center bg-secondary/10 p-3 rounded-lg border border-secondary/20">
+                    <span className="font-medium text-sm">{course.title}</span>
+                    <Link href={`/test?courseId=${course._id}`}>
+                      <Button size="sm" variant="outline" className="h-8">Start Test</Button>
                     </Link>
                   </div>
                 ))}
-                <div className="flex justify-between items-center bg-primary/10 p-3 rounded-lg border border-primary/20">
-                    <span className="font-semibold text-sm text-primary">Comprehensive Mock</span>
-                    <Link href="/test">
-                      <Button size="sm" className="h-8">Take Full Test</Button>
-                    </Link>
-                </div>
               </CardContent>
             </Card>
+            </motion.div>
 
             {/* Test History Table */}
-            <Card className="col-span-1 lg:col-span-2 border-border shadow-sm">
+            <motion.div className="col-span-1 lg:col-span-2" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.6 }}>
+            <Card className="border-border shadow-sm h-full">
               <CardHeader>
                 <CardTitle>Test History</CardTitle>
                 <p className="text-xs text-secondary-foreground">Your recent exam attempts</p>
@@ -316,6 +331,7 @@ export default function DashboardPage() {
                 </div>
               </CardContent>
             </Card>
+            </motion.div>
           </div>
         </main>
       </div>

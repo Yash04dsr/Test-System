@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation'; // Added imports
-import { LayoutDashboard, FileText, Settings, LogOut, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, FileText, Settings, LogOut, ShieldCheck, BookOpen } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 export function Sidebar() {
@@ -28,10 +28,16 @@ export function Sidebar() {
           <span className="font-medium">Dashboard</span>
         </Link>
         {user?.role === 'admin' ? (
-          <Link href="/admin/questions" className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-secondary/40 transition-colors">
-            <ShieldCheck size={20} />
-            <span className="font-medium">Manage Questions</span>
-          </Link>
+          <>
+            <Link href="/admin/questions" className={`flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${pathname === '/admin/questions' ? 'bg-secondary/40 font-semibold' : 'hover:bg-secondary/20'}`}>
+              <ShieldCheck size={20} />
+              <span className="font-medium">Manage Questions</span>
+            </Link>
+            <Link href="/admin/courses" className={`flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${pathname === '/admin/courses' ? 'bg-secondary/40 font-semibold' : 'hover:bg-secondary/20'}`}>
+              <BookOpen size={20} />
+              <span className="font-medium">Manage Courses</span>
+            </Link>
+          </>
         ) : (
           <Link href="/test" className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-secondary/40 transition-colors">
             <FileText size={20} />

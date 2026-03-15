@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { testAttemptsCollection } from '../models/TestAttempt';
 import { questionsCollection } from '../models/Question';
+import { db } from '../config/firebase'; // Need db to fetch from users collection
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export const getDashboardAnalytics = async (req: Request, res: Response): Promise<void> => {
@@ -16,7 +17,11 @@ export const getDashboardAnalytics = async (req: Request, res: Response): Promis
     const attemptsSnapshot = await testAttemptsCollection.where('userId', '==', userId).get();
 
     if (attemptsSnapshot.empty) {
-      res.status(404).json({ message: 'No test attempts found for this user.' });
+      res.status(200).json({
+        overallAccuracy: 0, totalAttempts: 0, radarData: [], pieData: [],
+        performanceTrends: [], testHistory: [], timeSpentAnalysis: [],
+        strengths: [], weaknesses: [], aiStudyPlan: 'Take your first test to get a personalized study plan!'
+      });
       return;
     }
 
@@ -251,14 +256,22 @@ export const getAdminStudents = async (req: Request, res: Response): Promise<voi
       studentsMap.set(uId, existing);
     });
 
+    // Fetch real user data from the 'users' collection
+    const usersSnapshot = await db.collection('users').get();
+    const userMap = new Map<string, any>();
+    usersSnapshot.forEach(doc => {
+      userMap.set(doc.id, doc.data());
+    });
+
     // Format for frontend
     const studentList = Array.from(studentsMap.values()).map(s => {
       const accuracy = s.totalQuestions > 0 ? (s.totalScore / s.totalQuestions) * 100 : 0;
+      const userDoc = userMap.get(s.userId);
+      const realName = userDoc && userDoc.name ? userDoc.name : `User ${s.userId.substring(0, 5)}`;
+      
       return {
         id: s.userId,
-        // Since we don't store User Names in DB currently, we extract mock names from ID pattern (e.g. atob)
-        // For fallback we just say "Student {ID}"
-        name: `User ${s.userId.substring(0, 5)}`,
+        name: realName,
         testsTaken: s.testsTaken,
         averageAccuracy: Math.round(accuracy)
       };

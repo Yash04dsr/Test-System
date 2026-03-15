@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { Topbar } from '@/components/layout/Topbar';
 import { Timer } from '@/components/test/Timer';
@@ -25,9 +25,11 @@ const DUMMY_QUESTIONS: Question[] = [
   { _id: '3', text: 'What is the sum of angles in a triangle?', options: ['90', '180', '360', '270'], topic: 'Geometry', difficulty: 'Easy' },
 ];
 
-export default function TestPage() {
+function TestEngineContent() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const courseId = searchParams.get('courseId');
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [answers, setAnswers] = useState<Record<number, number | null>>({});
@@ -64,7 +66,11 @@ export default function TestPage() {
 
     // Simulate API fetch
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-    fetch(`${apiUrl}/api/tests/questions`)
+    const fetchUrl = courseId 
+      ? `${apiUrl}/api/tests/questions?courseId=${courseId}`
+      : `${apiUrl}/api/tests/questions`;
+
+    fetch(fetchUrl)
       .then(res => res.json())
       .then(data => {
         if (data && data.length > 0) {
@@ -80,7 +86,7 @@ export default function TestPage() {
       .finally(() => {
         setLoading(false);
       });
-  }, [user, router, authLoading]);
+  }, [user, router, authLoading, courseId]);
 
   // Save session state to localStorage on changes
   useEffect(() => {
@@ -158,6 +164,7 @@ export default function TestPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: user.id, // Now uses real Firebase UID
+          courseId: courseId || null,
           answers: formattedAnswers,
           timeSpent: timeSpentTotal
         })
@@ -181,26 +188,30 @@ export default function TestPage() {
 
   const question = questions[currentIdx];
 
-  // If still checking auth, show loader
-  if (authLoading) {
+  // If still checking auth or questions are loading, show skeleton loader
+  if (authLoading || loading || questions.length === 0) {
     return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-      </div>
-    );
-  }
+      <div className="min-h-screen bg-background flex flex-col">
+        <Topbar title="Mathematics Final Mock Test" />
+        <main className="flex-1 flex flex-col md:flex-row max-w-7xl mx-auto w-full p-4 md:p-8 gap-6">
+          {/* Main Question Area Skeleton */}
+          <div className="flex-1 rounded-xl p-8 border border-border shadow-sm bg-card animate-pulse">
+            <div className="h-6 bg-secondary/20 rounded w-32 mb-8"></div>
+            <div className="h-4 bg-secondary/20 rounded w-full mb-3"></div>
+            <div className="h-4 bg-secondary/20 rounded w-5/6 mb-10"></div>
+            <div className="space-y-4">
+              {[1, 2, 3, 4].map(i => (
+                <div key={i} className="h-14 bg-secondary/20 rounded-lg"></div>
+              ))}
+            </div>
+          </div>
 
-  // If user is not logged in after auth check, redirect (handled by useEffect)
-  if (!user) {
-    return null; // Or a simple message
-  }
-
-  // If questions are still loading, show loader
-  if (loading || questions.length === 0) {
-    return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
-        <div className="text-secondary font-medium animate-pulse">Loading questions...</div>
+          {/* Right Sidebar Skeleton */}
+          <div className="w-full md:w-80 space-y-6 flex flex-col">
+            <div className="h-32 rounded-xl border border-border bg-card animate-pulse"></div>
+            <div className="h-64 rounded-xl border border-border bg-card animate-pulse"></div>
+          </div>
+        </main>
       </div>
     );
   }
@@ -287,5 +298,13 @@ export default function TestPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function TestPage() {
+  return (
+    <Suspense fallback={<div className="flex h-screen items-center justify-center bg-background"><div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin"></div></div>}>
+      <TestEngineContent />
+    </Suspense>
   );
 }

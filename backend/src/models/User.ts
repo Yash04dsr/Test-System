@@ -1,4 +1,4 @@
-import { db } from '../server';
+import { db } from '../config/firebase';
 
 export interface IUser {
   id?: string;
