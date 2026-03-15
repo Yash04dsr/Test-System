@@ -156,60 +156,26 @@ export const getDashboardAnalytics = async (req: Request, res: Response): Promis
       else if (accuracy < 50) weaknesses.push(topic);
     });
 
-    // Determined Peer Statistics (Global Average)
-    const allAttemptsSnapshot = await testAttemptsCollection.get();
-    let globalTotalScore = 0;
-    let globalTotalQuestions = 0;
-    allAttemptsSnapshot.forEach(doc => {
-        const data = doc.data();
-        globalTotalScore += (data.totalScore || 0);
-        if (data.answers) globalTotalQuestions += data.answers.length;
-    });
-    const peerAverage = globalTotalQuestions > 0 ? Math.round((globalTotalScore / globalTotalQuestions) * 100) : 0;
-
-    // Consistency Score (Standard Deviation / Score Stability)
-    const recentScores = performanceTrends.map(t => t.score);
-    let consistencyScore = 100; // default for 0-1 tests
-    if (recentScores.length > 1) {
-        const mean = recentScores.reduce((a, b) => a + b) / recentScores.length;
-        const variance = recentScores.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / recentScores.length;
-        const stdDev = Math.sqrt(variance);
-        // Normalize consistency: higher score for lower deviation
-        // e.g. 0-5 dev = 100%, 20+ dev = low%
-        consistencyScore = Math.max(0, Math.min(100, Math.round(100 - (stdDev * 5))));
-    }
-
-    // Speed-Accuracy Correlation
-    const speedAccuracyData = Object.keys(topicStats).map(topic => {
-        const stats = topicStats[topic];
-        const accuracy = stats.total > 0 ? (stats.correct / stats.total) * 100 : 0;
-        const avgTime = stats.total > 0 ? (stats.timeSpent / stats.total) : 0;
-        return { topic, speed: Math.round(avgTime), accuracy: Math.round(accuracy) };
-    });
-
-    // Generate AI Study Plan (existing logic below...)
+    // Generate AI Study Plan
     let aiStudyPlan = "No AI plan generated. Keep practicing!";
     try {
       if (process.env.GEMINI_API_KEY) {
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-        const accuracyPct = totalQuestions > 0 ? Math.round((totalScore / totalQuestions) * 100) : 0;
         const prompt = `Act as an expert tutor. Analyze this student's performance:
         Strengths: ${strengths.join(', ') || 'None yet'}
         Weaknesses: ${weaknesses.join(', ') || 'None yet'}
-        Overall Accuracy: ${accuracyPct}%
-        Peer Comparison: ${accuracyPct}% vs Peer Average of ${peerAverage}%
-        Consistency: ${consistencyScore}/100
-        Write a very concise, engaging, 2-3 sentence personalized study plan for them. Focus on closing the gap with peers if any.`;
+        Overall Accuracy: ${totalQuestions > 0 ? Math.round((totalScore / totalQuestions) * 100) : 0}%
+        Write a very concise, engaging, 2-3 sentence personalized study plan for them.`;
         
         const result = await model.generateContent(prompt);
         aiStudyPlan = result.response.text();
       } else {
         // Fallback mock AI plan
         if (weaknesses.length > 0) {
-          aiStudyPlan = `I recommend focusing heavily on ${weaknesses.join(' and ')}. Your foundation in ${strengths.join(', ') || 'other areas'} is looking solid. Your consistency score is ${consistencyScore} - ${consistencyScore > 80 ? 'very stable!' : 'try to be more uniform in your performance.'}`;
+          aiStudyPlan = `I recommend focusing heavily on ${weaknesses.join(' and ')}. Your foundation in ${strengths.join(', ') || 'other areas'} is looking solid, so dedicate your next few study sessions to these weak points to see the biggest score improvement.`;
         } else if (strengths.length > 0) {
-          aiStudyPlan = `Great work! Your scores in ${strengths.join(', ')} are excellent. You are currently at ${totalQuestions > 0 ? Math.round((totalScore / totalQuestions) * 100) : 0}% accuracy compared to the average peer at ${peerAverage}%.`;
+          aiStudyPlan = `Great work! Your scores in ${strengths.join(', ')} are excellent. Keep taking comprehensive mock tests to maintain this high level of accuracy across the board.`;
         } else {
           aiStudyPlan = `Take a few more tests! We need a bit more data to identify your precise strengths and weaknesses.`;
         }
@@ -222,14 +188,11 @@ export const getDashboardAnalytics = async (req: Request, res: Response): Promis
     res.status(200).json({
       overallAccuracy: totalQuestions > 0 ? Math.round((totalScore / totalQuestions) * 100) : 0,
       totalAttempts: attemptsData.length,
-      peerAverage,
-      consistencyScore,
       radarData,
       pieData,
       performanceTrends,
       testHistory,
       timeSpentAnalysis,
-      speedAccuracyData,
       strengths,
       weaknesses,
       aiStudyPlan
