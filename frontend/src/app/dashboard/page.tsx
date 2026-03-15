@@ -13,7 +13,8 @@ import { motion } from 'framer-motion';
 import {
   Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer,
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-  PieChart, Pie, Cell
+  PieChart, Pie, Cell,
+  BarChart, Bar
 } from 'recharts';
 
 // Mock Data fallback
@@ -33,24 +34,43 @@ const MOCK_PIE = [
 ];
 const PIE_COLORS = ['#10b981', '#f59e0b', '#ef4444'];
 
+// Data shape interface — ensures type safety
+interface DashboardData {
+  overallAccuracy: number;
+  totalAttempts: number;
+  peerAverage: number;
+  consistencyScore: number;
+  radarData: { subject: string; A: number; fullMark: number }[];
+  pieData: { name: string; value: number }[];
+  performanceTrends: { date: string; score: number }[];
+  speedAccuracyData: { topic: string; speed: number; accuracy: number }[];
+  strengths: string[];
+  weaknesses: string[];
+  testHistory: { date: string; score: number; totalQuestions: number; accuracy: number }[];
+  aiStudyPlan: string;
+}
+
+const DEFAULT_DATA: DashboardData = {
+  overallAccuracy: 0,
+  totalAttempts: 0,
+  peerAverage: 0,
+  consistencyScore: 100,
+  radarData: MOCK_RADAR,
+  pieData: MOCK_PIE,
+  performanceTrends: MOCK_LINE,
+  speedAccuracyData: [],
+  strengths: [],
+  weaknesses: [],
+  testHistory: [],
+  aiStudyPlan: 'Loading AI generated strategy...'
+};
+
 export default function DashboardPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   
-  const [data, setData] = useState({
-    overallAccuracy: 78,
-    totalAttempts: 12,
-    radarData: MOCK_RADAR,
-    pieData: MOCK_PIE,
-    performanceTrends: MOCK_LINE,
-    strengths: ['Geometry', 'Physics', 'Algebra'],
-    weaknesses: ['Probability', 'Calculus'],
-    testHistory: [] as { date: string, score: number, totalQuestions: number, accuracy: number }[],
-    aiStudyPlan: 'Loading AI generated strategy...'
-  });
-
+  const [data, setData] = useState<DashboardData>(DEFAULT_DATA);
   const [enrolledCourses, setEnrolledCourses] = useState<{_id: string, title: string}[]>([]);
-
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -59,21 +79,21 @@ export default function DashboardPage() {
       return;
     }
 
-    if (user && user.role === 'admin') { // Added user check here to prevent error if user is null
+    if (user && user.role === 'admin') {
       router.push('/admin');
       return;
     }
 
-    if (!user) return; // Guard clause before fetch
+    if (!user) return;
 
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
     
-    // Fetch analytics - user is guaranteed to be truthy due to earlier check
+    // Fetch analytics — MERGE with defaults so missing fields never crash
     fetch(`${apiUrl}/api/analytics/dashboard/${user.id}`)
       .then(res => res.json())
       .then(resData => {
-        if (resData && !resData.error && resData.radarData) {
-          setData(resData);
+        if (resData && !resData.error) {
+          setData(prev => ({ ...prev, ...resData }));
         }
       })
       .catch(err => console.error("Using fallback analytics data"))
@@ -91,7 +111,7 @@ export default function DashboardPage() {
       .catch(err => console.error("Could not fetch available courses"));
   }, [user, authLoading, router]);
 
-  // Only render fully if auth is initialized and user exists, otherwise show layout with skeleton
+  // Skeleton loading state
   if (authLoading || !user) {
     return (
       <div className="flex min-h-screen bg-background text-foreground">
@@ -125,14 +145,27 @@ export default function DashboardPage() {
         <Topbar title="Results Dashboard" />
         
         <main className="flex-1 p-6 md:p-8 overflow-y-auto w-full max-w-7xl mx-auto space-y-6">
-          <div className="flex justify-between items-end">
+          {/* Header with Key Metrics */}
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
             <div>
               <h2 className="text-3xl font-bold tracking-tight">Welcome back, {user.name.split(' ')[0]}.</h2>
               <p className="text-secondary mt-1">Here is a deep analysis of your performance.</p>
             </div>
-            <div className="text-right">
-              <div className="text-sm font-medium text-secondary">Overall Accuracy</div>
-              <div className="text-4xl font-bold text-primary">{Math.round(data.overallAccuracy)}%</div>
+            <div className="flex gap-6 bg-secondary/5 p-4 rounded-xl border border-border">
+              <div className="text-center">
+                <div className="text-[10px] uppercase font-semibold text-secondary-foreground tracking-wider">Accuracy</div>
+                <div className="text-3xl font-bold text-primary">{Math.round(data.overallAccuracy)}%</div>
+              </div>
+              <div className="w-px bg-border hidden sm:block"></div>
+              <div className="text-center">
+                <div className="text-[10px] uppercase font-semibold text-secondary-foreground tracking-wider">Peer Avg</div>
+                <div className="text-3xl font-bold text-secondary-foreground">{data.peerAverage}%</div>
+              </div>
+              <div className="w-px bg-border hidden sm:block"></div>
+              <div className="text-center">
+                <div className="text-[10px] uppercase font-semibold text-secondary-foreground tracking-wider">Consistency</div>
+                <div className="text-3xl font-bold text-primary">{data.consistencyScore}<span className="text-sm font-normal text-secondary">/100</span></div>
+              </div>
             </div>
           </div>
 
@@ -216,7 +249,7 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
 
-            {/* Strengths & Weaknesses */}
+            {/* Strengths & Weaknesses + AI Insights */}
             <Card className="col-span-1 lg:col-span-2 border-border shadow-sm">
               <CardHeader>
                 <CardTitle>AI Insights Engine</CardTitle>
@@ -262,6 +295,32 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
             </motion.div>
+
+            {/* Speed vs Accuracy — only render if data exists */}
+            {data.speedAccuracyData && data.speedAccuracyData.length > 0 && (
+              <motion.div className="col-span-1 lg:col-span-3" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.4 }}>
+              <Card className="border-border shadow-sm">
+                <CardHeader>
+                  <CardTitle>Speed vs. Accuracy</CardTitle>
+                  <p className="text-xs text-secondary-foreground">Answering time vs correctness by topic</p>
+                </CardHeader>
+                <CardContent className="h-[280px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={data.speedAccuracyData} margin={{ top: 10, right: 30, left: 0, bottom: 20 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                      <XAxis dataKey="topic" tick={{ fill: '#64748b', fontSize: 11 }} />
+                      <YAxis yAxisId="left" orientation="left" stroke="#0f172a" tick={{ fill: '#64748b', fontSize: 11 }} label={{ value: 'Accuracy %', angle: -90, position: 'insideLeft', fontSize: 11, offset: 10 }} />
+                      <YAxis yAxisId="right" orientation="right" stroke="#f59e0b" tick={{ fill: '#64748b', fontSize: 11 }} label={{ value: 'Time (sec)', angle: 90, position: 'insideRight', fontSize: 11, offset: 10 }} />
+                      <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0' }} />
+                      <Legend iconType="circle" wrapperStyle={{ fontSize: '12px' }} />
+                      <Bar yAxisId="left" dataKey="accuracy" fill="#0f172a" name="Accuracy %" radius={[4, 4, 0, 0]} />
+                      <Bar yAxisId="right" dataKey="speed" fill="#f59e0b" name="Avg Time (s)" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+              </motion.div>
+            )}
             
           </div>
 

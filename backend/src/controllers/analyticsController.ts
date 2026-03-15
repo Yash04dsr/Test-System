@@ -156,7 +156,46 @@ export const getDashboardAnalytics = async (req: Request, res: Response): Promis
       else if (accuracy < 50) weaknesses.push(topic);
     });
 
+    // --- NEW: Advanced Metrics (additive, wrapped in try/catch for safety) ---
+    let peerAverage = 0;
+    let consistencyScore = 100;
+    let speedAccuracyData: { topic: string; speed: number; accuracy: number }[] = [];
+
+    try {
+      // 1. Peer Average: fetch ALL attempts and compute global accuracy
+      const allAttemptsSnapshot = await testAttemptsCollection.get();
+      let globalTotalScore = 0;
+      let globalTotalQuestions = 0;
+      allAttemptsSnapshot.forEach(doc => {
+        const d = doc.data();
+        globalTotalScore += (d.totalScore || 0);
+        if (d.answers) globalTotalQuestions += d.answers.length;
+      });
+      peerAverage = globalTotalQuestions > 0 ? Math.round((globalTotalScore / globalTotalQuestions) * 100) : 0;
+
+      // 2. Consistency Score: lower standard deviation of scores = higher consistency
+      const recentScores = performanceTrends.map((t: any) => t.score);
+      if (recentScores.length > 1) {
+        const mean = recentScores.reduce((a: number, b: number) => a + b, 0) / recentScores.length;
+        const variance = recentScores.reduce((a: number, b: number) => a + Math.pow(b - mean, 2), 0) / recentScores.length;
+        const stdDev = Math.sqrt(variance);
+        consistencyScore = Math.max(0, Math.min(100, Math.round(100 - (stdDev * 5))));
+      }
+
+      // 3. Speed vs Accuracy Correlation per topic
+      speedAccuracyData = Object.keys(topicStats).map(topic => {
+        const stats = topicStats[topic];
+        const acc = stats.total > 0 ? Math.round((stats.correct / stats.total) * 100) : 0;
+        const avgTime = stats.total > 0 ? Math.round(stats.timeSpent / stats.total) : 0;
+        return { topic, speed: avgTime, accuracy: acc };
+      });
+    } catch (metricsErr) {
+      console.error('Advanced metrics calculation error (non-fatal):', metricsErr);
+      // Keep default values — will not crash the endpoint
+    }
+
     // Generate AI Study Plan
+    const overallAccuracyPct = totalQuestions > 0 ? Math.round((totalScore / totalQuestions) * 100) : 0;
     let aiStudyPlan = "No AI plan generated. Keep practicing!";
     try {
       if (process.env.GEMINI_API_KEY) {
@@ -165,19 +204,21 @@ export const getDashboardAnalytics = async (req: Request, res: Response): Promis
         const prompt = `Act as an expert tutor. Analyze this student's performance:
         Strengths: ${strengths.join(', ') || 'None yet'}
         Weaknesses: ${weaknesses.join(', ') || 'None yet'}
-        Overall Accuracy: ${totalQuestions > 0 ? Math.round((totalScore / totalQuestions) * 100) : 0}%
-        Write a very concise, engaging, 2-3 sentence personalized study plan for them.`;
+        Overall Accuracy: ${overallAccuracyPct}%
+        Peer Average: ${peerAverage}%
+        Consistency Score: ${consistencyScore}/100
+        Write a very concise, engaging, 2-3 sentence personalized study plan. If the student is below peer average, suggest how to close the gap.`;
         
         const result = await model.generateContent(prompt);
         aiStudyPlan = result.response.text();
       } else {
         // Fallback mock AI plan
         if (weaknesses.length > 0) {
-          aiStudyPlan = `I recommend focusing heavily on ${weaknesses.join(' and ')}. Your foundation in ${strengths.join(', ') || 'other areas'} is looking solid, so dedicate your next few study sessions to these weak points to see the biggest score improvement.`;
+          aiStudyPlan = `Focus on ${weaknesses.join(' and ')}. Your ${strengths.join(', ') || 'other areas'} are solid. Consistency: ${consistencyScore}/100 — ${consistencyScore > 80 ? 'very stable!' : 'try to be more uniform.'}`;
         } else if (strengths.length > 0) {
-          aiStudyPlan = `Great work! Your scores in ${strengths.join(', ')} are excellent. Keep taking comprehensive mock tests to maintain this high level of accuracy across the board.`;
+          aiStudyPlan = `Great work in ${strengths.join(', ')}! You're at ${overallAccuracyPct}% vs peer average of ${peerAverage}%. Keep it up!`;
         } else {
-          aiStudyPlan = `Take a few more tests! We need a bit more data to identify your precise strengths and weaknesses.`;
+          aiStudyPlan = `Take a few more tests! We need more data to identify your strengths and weaknesses.`;
         }
       }
     } catch (err) {
@@ -186,13 +227,16 @@ export const getDashboardAnalytics = async (req: Request, res: Response): Promis
     }
 
     res.status(200).json({
-      overallAccuracy: totalQuestions > 0 ? Math.round((totalScore / totalQuestions) * 100) : 0,
+      overallAccuracy: overallAccuracyPct,
       totalAttempts: attemptsData.length,
+      peerAverage,
+      consistencyScore,
       radarData,
       pieData,
       performanceTrends,
       testHistory,
       timeSpentAnalysis,
+      speedAccuracyData,
       strengths,
       weaknesses,
       aiStudyPlan
