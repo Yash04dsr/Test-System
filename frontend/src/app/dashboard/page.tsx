@@ -40,9 +40,12 @@ export default function DashboardPage() {
   const [data, setData] = useState({
     overallAccuracy: 78,
     totalAttempts: 12,
+    peerAverage: 65,
+    consistencyScore: 85,
     radarData: MOCK_RADAR,
     pieData: MOCK_PIE,
     performanceTrends: MOCK_LINE,
+    speedAccuracyData: [],
     strengths: ['Geometry', 'Physics', 'Algebra'],
     weaknesses: ['Probability', 'Calculus'],
     testHistory: [] as { date: string, score: number, totalQuestions: number, accuracy: number }[],
@@ -125,14 +128,32 @@ export default function DashboardPage() {
         <Topbar title="Results Dashboard" />
         
         <main className="flex-1 p-6 md:p-8 overflow-y-auto w-full max-w-7xl mx-auto space-y-6">
-          <div className="flex justify-between items-end">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
             <div>
               <h2 className="text-3xl font-bold tracking-tight">Welcome back, {user.name.split(' ')[0]}.</h2>
               <p className="text-secondary mt-1">Here is a deep analysis of your performance.</p>
             </div>
-            <div className="text-right">
-              <div className="text-sm font-medium text-secondary">Overall Accuracy</div>
-              <div className="text-4xl font-bold text-primary">{Math.round(data.overallAccuracy)}%</div>
+            <div className="flex gap-8 bg-secondary/10 p-4 rounded-xl border border-secondary/20">
+              <div className="text-center">
+                <div className="text-[10px] uppercase font-bold text-secondary-foreground mb-1 tracking-widest">Consistency Index</div>
+                <div className="text-2xl font-bold text-primary flex items-center justify-center gap-1">
+                  {data.consistencyScore}
+                  <span className="text-xs font-normal text-secondary">/100</span>
+                </div>
+              </div>
+              <div className="w-px h-10 bg-secondary/30 hidden md:block"></div>
+              <div className="text-center">
+                <div className="text-[10px] uppercase font-bold text-secondary-foreground mb-1 tracking-widest">Peer Comparison</div>
+                <div className="text-2xl font-bold text-primary flex items-center justify-center gap-1">
+                  {Math.round(data.overallAccuracy)}%
+                  <span className="text-xs font-normal text-secondary">vs {data.peerAverage}%</span>
+                </div>
+              </div>
+              <div className="w-px h-10 bg-secondary/30 hidden md:block"></div>
+              <div className="text-center">
+                <div className="text-[10px] uppercase font-bold text-secondary-foreground mb-1 tracking-widest">Overall Accuracy</div>
+                <div className="text-4xl font-bold text-primary">{Math.round(data.overallAccuracy)}%</div>
+              </div>
             </div>
           </div>
 
@@ -260,6 +281,30 @@ export default function DashboardPage() {
                   </p>
                 </div>
               </CardContent>
+            </Card>
+
+            {/* Speed vs Accuracy Correlation */}
+            <Card className="col-span-1 lg:col-span-3 border-border shadow-sm">
+                <CardHeader>
+                <CardTitle>Speed vs. Accuracy Analysis</CardTitle>
+                <p className="text-xs text-secondary-foreground">Correlation between answering time and correctness per topic</p>
+                </CardHeader>
+                <CardContent className="h-[250px] pb-8">
+                {loading ? <Skeleton className="w-full h-full" /> : (
+                <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={data.speedAccuracyData} margin={{ top: 20, right: 30, left: 10, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                    <XAxis dataKey="topic" tick={{ fontSize: 10, fill: '#64748b' }} />
+                    <YAxis yAxisId="left" orientation="left" stroke="#0f172a" label={{ value: 'Accuracy (%)', angle: -90, position: 'insideLeft', fontSize: 10, offset: 0 }} tick={{ fontSize: 10 }} />
+                    <YAxis yAxisId="right" orientation="right" stroke="#f59e0b" label={{ value: 'Speed (sec)', angle: 90, position: 'insideRight', fontSize: 10, offset: 0 }} tick={{ fontSize: 10 }} />
+                    <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0' }} />
+                    <Legend iconType="circle" wrapperStyle={{ fontSize: '12px' }} />
+                    <Line yAxisId="left" type="monotone" dataKey="accuracy" stroke="#0f172a" name="Accuracy %" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                    <Line yAxisId="right" type="monotone" dataKey="speed" stroke="#f59e0b" name="Avg Speed (s)" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                    </LineChart>
+                </ResponsiveContainer>
+                )}
+                </CardContent>
             </Card>
             </motion.div>
             
