@@ -49,11 +49,21 @@ export const getDashboardAnalytics = async (req: Request, res: Response): Promis
         }
     });
 
-    // Trend metrics
+    // Trend metrics and History table data
     const performanceTrends = attemptsData.map(attempt => ({
       date: attempt.date,
       score: attempt.score
     })).sort((a, b) => a.date.getTime() - b.date.getTime());
+
+    const testHistory = attemptsData.map(attempt => {
+      const accuracy = attempt.answers.length > 0 ? (attempt.score / attempt.answers.length) * 100 : 0;
+      return {
+        date: attempt.date,
+        score: attempt.score,
+        totalQuestions: attempt.answers.length,
+        accuracy: Math.round(accuracy)
+      };
+    }).sort((a, b) => b.date.getTime() - a.date.getTime());
 
     // We need to fetch all relevant questions to build the topic metrics cache
     const uniqueQuestionIds = new Set<string>();
@@ -146,12 +156,86 @@ export const getDashboardAnalytics = async (req: Request, res: Response): Promis
       radarData,
       pieData,
       performanceTrends,
+      testHistory,
       timeSpentAnalysis,
       strengths,
       weaknesses
     });
   } catch (error) {
     console.error('Error in getDashboardAnalytics:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const getAdminGlobalAnalytics = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const attemptsSnapshot = await testAttemptsCollection.get();
+    const questionsSnapshot = await questionsCollection.count().get();
+    
+    // Quick count of unique users via a Set
+    const uniqueStudents = new Set<string>();
+    let totalScore = 0;
+    let totalQuestions = 0;
+
+    attemptsSnapshot.forEach(doc => {
+      const data = doc.data();
+      if (data.userId) uniqueStudents.add(data.userId);
+      totalScore += (data.totalScore || 0);
+      if (data.answers) totalQuestions += data.answers.length;
+    });
+
+    const averageAccuracy = totalQuestions > 0 ? (totalScore / totalQuestions) * 100 : 0;
+
+    res.status(200).json({
+      totalStudents: uniqueStudents.size,
+      totalTestsTaken: attemptsSnapshot.size,
+      averageAccuracy,
+      activeQuestions: questionsSnapshot.data().count
+    });
+  } catch (error) {
+    console.error('Error in getAdminGlobalAnalytics:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const getAdminStudents = async (req: Request, res: Response): Promise<void> => {
+  try {
+    // In a real app we would have a usersCollection. 
+    // Here we deduce students from attempts.
+    const attemptsSnapshot = await testAttemptsCollection.get();
+    
+    const studentsMap = new Map<string, { userId: string, testsTaken: number, totalScore: number, totalQuestions: number }>();
+
+    attemptsSnapshot.forEach(doc => {
+      const data = doc.data();
+      const uId = data.userId;
+      if (!uId) return;
+
+      const existing = studentsMap.get(uId) || { userId: uId, testsTaken: 0, totalScore: 0, totalQuestions: 0 };
+      
+      existing.testsTaken += 1;
+      existing.totalScore += (data.totalScore || 0);
+      if (data.answers) existing.totalQuestions += data.answers.length;
+      
+      studentsMap.set(uId, existing);
+    });
+
+    // Format for frontend
+    const studentList = Array.from(studentsMap.values()).map(s => {
+      const accuracy = s.totalQuestions > 0 ? (s.totalScore / s.totalQuestions) * 100 : 0;
+      return {
+        id: s.userId,
+        // Since we don't store User Names in DB currently, we extract mock names from ID pattern (e.g. atob)
+        // For fallback we just say "Student {ID}"
+        name: `User ${s.userId.substring(0, 5)}`,
+        testsTaken: s.testsTaken,
+        averageAccuracy: Math.round(accuracy)
+      };
+    });
+
+    res.status(200).json(studentList);
+  } catch (error) {
+    console.error('Error in getAdminStudents:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };

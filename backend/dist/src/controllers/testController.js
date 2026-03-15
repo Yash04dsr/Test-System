@@ -12,7 +12,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getQuestions = exports.submitTest = void 0;
+exports.deleteQuestion = exports.updateQuestion = exports.createQuestion = exports.getAdminQuestions = exports.getQuestions = exports.submitTest = void 0;
 const zod_1 = require("zod");
 const Question_1 = require("../models/Question");
 const TestAttempt_1 = require("../models/TestAttempt");
@@ -95,3 +95,56 @@ const getQuestions = (req, res) => __awaiter(void 0, void 0, void 0, function* (
     }
 });
 exports.getQuestions = getQuestions;
+const getAdminQuestions = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const questionsSnapshot = yield Question_1.questionsCollection.get();
+        const questions = questionsSnapshot.docs.map(doc => (Object.assign({ _id: doc.id }, doc.data())));
+        res.status(200).json(questions);
+    }
+    catch (error) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+exports.getAdminQuestions = getAdminQuestions;
+const createQuestion = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { text, options, correctOptionIndex, topic, difficulty } = req.body;
+        const newDoc = yield Question_1.questionsCollection.add({
+            text, options, correctOptionIndex, topic, difficulty
+        });
+        res.status(201).json({ _id: newDoc.id, message: 'Question created' });
+    }
+    catch (error) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+exports.createQuestion = createQuestion;
+const updateQuestion = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { id } = req.params;
+        if (typeof id !== 'string')
+            throw new Error('Invalid ID');
+        const { text, options, correctOptionIndex, topic, difficulty } = req.body;
+        yield Question_1.questionsCollection.doc(id).update({
+            text, options, correctOptionIndex, topic, difficulty
+        });
+        res.status(200).json({ message: 'Question updated' });
+    }
+    catch (error) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+exports.updateQuestion = updateQuestion;
+const deleteQuestion = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { id } = req.params;
+        if (typeof id !== 'string')
+            throw new Error('Invalid ID');
+        yield Question_1.questionsCollection.doc(id).delete();
+        res.status(200).json({ message: 'Question deleted' });
+    }
+    catch (error) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+exports.deleteQuestion = deleteQuestion;

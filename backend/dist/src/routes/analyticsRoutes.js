@@ -4,4 +4,7 @@ const express_1 = require("express");
 const analyticsController_1 = require("../controllers/analyticsController");
 const router = (0, express_1.Router)();
 router.get('/dashboard/:userId', analyticsController_1.getDashboardAnalytics);
+// Admin Routes
+router.get('/admin/global', analyticsController_1.getAdminGlobalAnalytics);
+router.get('/admin/students', analyticsController_1.getAdminStudents);
 exports.default = router;

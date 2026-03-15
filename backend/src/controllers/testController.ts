@@ -89,3 +89,53 @@ export const getQuestions = async (req: Request, res: Response): Promise<void> =
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
+export const getAdminQuestions = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const questionsSnapshot = await questionsCollection.get();
+    const questions = questionsSnapshot.docs.map(doc => ({
+      _id: doc.id,
+      ...doc.data()
+    }));
+    res.status(200).json(questions);
+  } catch (error) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const createQuestion = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { text, options, correctOptionIndex, topic, difficulty } = req.body;
+    const newDoc = await questionsCollection.add({
+      text, options, correctOptionIndex, topic, difficulty
+    });
+    res.status(201).json({ _id: newDoc.id, message: 'Question created' });
+  } catch (error) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const updateQuestion = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    if (typeof id !== 'string') throw new Error('Invalid ID');
+    const { text, options, correctOptionIndex, topic, difficulty } = req.body;
+    await questionsCollection.doc(id).update({
+      text, options, correctOptionIndex, topic, difficulty
+    });
+    res.status(200).json({ message: 'Question updated' });
+  } catch (error) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const deleteQuestion = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    if (typeof id !== 'string') throw new Error('Invalid ID');
+    await questionsCollection.doc(id).delete();
+    res.status(200).json({ message: 'Question deleted' });
+  } catch (error) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};

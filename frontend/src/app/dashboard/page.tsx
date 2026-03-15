@@ -1,9 +1,13 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { useAuth } from '@/context/AuthContext';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Topbar } from '@/components/layout/Topbar';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
 import {
   Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer,
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
@@ -28,6 +32,9 @@ const MOCK_PIE = [
 const PIE_COLORS = ['#10b981', '#f59e0b', '#ef4444'];
 
 export default function DashboardPage() {
+  const { user } = useAuth();
+  const router = useRouter();
+  
   const [data, setData] = useState({
     overallAccuracy: 78,
     totalAttempts: 12,
@@ -35,11 +42,27 @@ export default function DashboardPage() {
     pieData: MOCK_PIE,
     performanceTrends: MOCK_LINE,
     strengths: ['Geometry', 'Physics', 'Algebra'],
-    weaknesses: ['Probability', 'Calculus']
+    weaknesses: ['Probability', 'Calculus'],
+    testHistory: [] as any[]
   });
 
+  const [availableTopics, setAvailableTopics] = useState<string[]>([]);
+
   useEffect(() => {
-    fetch('http://localhost:5000/api/analytics/dashboard/60d0fe4f5311236168a109ca')
+    if (!user) {
+      router.push('/login');
+      return;
+    }
+
+    if (user.role === 'admin') {
+      router.push('/admin');
+      return;
+    }
+
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+    
+    // Fetch analytics
+    fetch(`${apiUrl}/api/analytics/dashboard/${user.id}`)
       .then(res => res.json())
       .then(resData => {
         if (resData && !resData.error && resData.radarData) {
@@ -47,7 +70,20 @@ export default function DashboardPage() {
         }
       })
       .catch(err => console.error("Using fallback analytics data"));
-  }, []);
+
+    // Fetch available tests
+    fetch(`${apiUrl}/api/tests/questions`)
+      .then(res => res.json())
+      .then(qData => {
+        if (Array.isArray(qData)) {
+          const topics = Array.from(new Set(qData.map((q: any) => q.topic)));
+          setAvailableTopics(topics as string[]);
+        }
+      })
+      .catch(err => console.error("Could not fetch available tests"));
+  }, [user, router]);
+
+  if (!user) return null; // Prevent flash of unauthorized content
 
   return (
     <div className="flex min-h-screen bg-background text-foreground">
@@ -58,7 +94,7 @@ export default function DashboardPage() {
         <main className="flex-1 p-6 md:p-8 overflow-y-auto w-full max-w-7xl mx-auto space-y-6">
           <div className="flex justify-between items-end">
             <div>
-              <h2 className="text-3xl font-bold tracking-tight">Welcome back, Alex.</h2>
+              <h2 className="text-3xl font-bold tracking-tight">Welcome back, {user.name.split(' ')[0]}.</h2>
               <p className="text-secondary mt-1">Here is a deep analysis of your performance.</p>
             </div>
             <div className="text-right">
@@ -173,6 +209,77 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
             
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pt-4">
+            {/* Available Tests */}
+            <Card className="col-span-1 border-border shadow-sm">
+              <CardHeader>
+                <CardTitle>Available Tests</CardTitle>
+                <p className="text-xs text-secondary-foreground">Topics ready for practice</p>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {availableTopics.length === 0 ? (
+                  <p className="text-secondary text-sm">No tests available.</p>
+                ) : availableTopics.map((topic, i) => (
+                  <div key={i} className="flex justify-between items-center bg-secondary/10 p-3 rounded-lg border border-secondary/20">
+                    <span className="font-medium text-sm">{topic}</span>
+                    <Link href="/test">
+                      <Button size="sm" variant="outline" className="h-8">Start</Button>
+                    </Link>
+                  </div>
+                ))}
+                <div className="flex justify-between items-center bg-primary/10 p-3 rounded-lg border border-primary/20">
+                    <span className="font-semibold text-sm text-primary">Comprehensive Mock</span>
+                    <Link href="/test">
+                      <Button size="sm" className="h-8">Take Full Test</Button>
+                    </Link>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Test History Table */}
+            <Card className="col-span-1 lg:col-span-2 border-border shadow-sm">
+              <CardHeader>
+                <CardTitle>Test History</CardTitle>
+                <p className="text-xs text-secondary-foreground">Your recent exam attempts</p>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm text-left">
+                    <thead className="bg-secondary/10 text-secondary-foreground uppercase text-xs">
+                      <tr>
+                        <th className="px-6 py-4">Date</th>
+                        <th className="px-6 py-4 text-center">Questions</th>
+                        <th className="px-6 py-4 text-center">Score</th>
+                        <th className="px-6 py-4 text-right">Accuracy</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {data.testHistory && data.testHistory.length > 0 ? data.testHistory.slice(0, 5).map((history, idx) => (
+                        <tr key={idx} className="hover:bg-secondary/5 transition-colors">
+                          <td className="px-6 py-4 font-medium whitespace-nowrap">
+                            {new Date(history.date).toLocaleDateString()} at {new Date(history.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                          </td>
+                          <td className="px-6 py-4 text-center">{history.totalQuestions}</td>
+                          <td className="px-6 py-4 text-center">{history.score} / {history.totalQuestions}</td>
+                          <td className="px-6 py-4 text-right">
+                            <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                              history.accuracy >= 70 ? 'bg-success/20 text-success' : 
+                              history.accuracy <= 40 ? 'bg-destructive/20 text-destructive' : 'bg-primary/20 text-primary'
+                            }`}>
+                              {history.accuracy}%
+                            </span>
+                          </td>
+                        </tr>
+                      )) : (
+                        <tr><td colSpan={4} className="px-6 py-8 text-center text-secondary">No test history available.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </main>
       </div>

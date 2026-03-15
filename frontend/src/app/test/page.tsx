@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@/context/AuthContext';
 import { Topbar } from '@/components/layout/Topbar';
 import { Timer } from '@/components/test/Timer';
 import { QuestionNav, QuestionState } from '@/components/test/QuestionNav';
@@ -16,6 +17,7 @@ const DUMMY_QUESTIONS = [
 ];
 
 export default function TestPage() {
+  const { user } = useAuth();
   const router = useRouter();
   const [questions, setQuestions] = useState(DUMMY_QUESTIONS);
   const [currentIdx, setCurrentIdx] = useState(0);
@@ -24,11 +26,19 @@ export default function TestPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
+    if (!user) {
+      router.push('/login');
+      return;
+    }
+  }, [user, router]);
+
+  useEffect(() => {
     // Initial visit state
     setStates(prev => ({ ...prev, 0: prev[0] || 'visited' }));
     
     // Simulate API fetch
-    fetch('http://localhost:5000/api/tests/questions')
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+    fetch(`${apiUrl}/api/tests/questions`)
       .then(res => res.json())
       .then(data => {
         if (data && data.length > 0) setQuestions(data);
@@ -54,10 +64,11 @@ export default function TestPage() {
   };
 
   const submitTest = async () => {
+    if (!user) return;
     setIsSubmitting(true);
     
     const payload = {
-      userId: "60d0fe4f5311236168a109ca", // Mock User ID
+      userId: user.id, // Use actual logged in user's ID
       answers: questions.map((q, idx) => ({
         questionId: q._id,
         selectedOptionIndex: answers[idx] ?? null,
