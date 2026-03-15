@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { testAttemptsCollection } from '../models/TestAttempt';
 import { questionsCollection } from '../models/Question';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export const getDashboardAnalytics = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -150,6 +151,35 @@ export const getDashboardAnalytics = async (req: Request, res: Response): Promis
       else if (accuracy < 50) weaknesses.push(topic);
     });
 
+    // Generate AI Study Plan
+    let aiStudyPlan = "No AI plan generated. Keep practicing!";
+    try {
+      if (process.env.GEMINI_API_KEY) {
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const prompt = `Act as an expert tutor. Analyze this student's performance:
+        Strengths: ${strengths.join(', ') || 'None yet'}
+        Weaknesses: ${weaknesses.join(', ') || 'None yet'}
+        Overall Accuracy: ${totalQuestions > 0 ? Math.round((totalScore / totalQuestions) * 100) : 0}%
+        Write a very concise, engaging, 2-3 sentence personalized study plan for them.`;
+        
+        const result = await model.generateContent(prompt);
+        aiStudyPlan = result.response.text();
+      } else {
+        // Fallback mock AI plan
+        if (weaknesses.length > 0) {
+          aiStudyPlan = `I recommend focusing heavily on ${weaknesses.join(' and ')}. Your foundation in ${strengths.join(', ') || 'other areas'} is looking solid, so dedicate your next few study sessions to these weak points to see the biggest score improvement.`;
+        } else if (strengths.length > 0) {
+          aiStudyPlan = `Great work! Your scores in ${strengths.join(', ')} are excellent. Keep taking comprehensive mock tests to maintain this high level of accuracy across the board.`;
+        } else {
+          aiStudyPlan = `Take a few more tests! We need a bit more data to identify your precise strengths and weaknesses.`;
+        }
+      }
+    } catch (err) {
+      console.error("AI Generation Error:", err);
+      aiStudyPlan = "Unable to generate study plan at this time.";
+    }
+
     res.status(200).json({
       overallAccuracy: totalQuestions > 0 ? Math.round((totalScore / totalQuestions) * 100) : 0,
       totalAttempts: attemptsData.length,
@@ -159,7 +189,8 @@ export const getDashboardAnalytics = async (req: Request, res: Response): Promis
       testHistory,
       timeSpentAnalysis,
       strengths,
-      weaknesses
+      weaknesses,
+      aiStudyPlan
     });
   } catch (error) {
     console.error('Error in getDashboardAnalytics:', error);

@@ -8,43 +8,110 @@ import { Timer } from '@/components/test/Timer';
 import { QuestionNav, QuestionState } from '@/components/test/QuestionNav';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent } from '@/components/ui/Card';
+import { toast } from 'sonner';
+
+interface Question {
+  _id: string;
+  text: string;
+  options: string[];
+  topic: string;
+  difficulty: "Easy" | "Medium" | "Hard";
+}
 
 // Dummy questions in case API is down
-const DUMMY_QUESTIONS = [
+const DUMMY_QUESTIONS: Question[] = [
   { _id: '1', text: 'What is the derivative of x^2?', options: ['x', '2x', 'x^2', '2'], topic: 'Calculus', difficulty: 'Easy' },
   { _id: '2', text: 'Solve for x: 2x + 5 = 15', options: ['5', '10', '2.5', '15'], topic: 'Algebra', difficulty: 'Easy' },
   { _id: '3', text: 'What is the sum of angles in a triangle?', options: ['90', '180', '360', '270'], topic: 'Geometry', difficulty: 'Easy' },
 ];
 
 export default function TestPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
-  const [questions, setQuestions] = useState(DUMMY_QUESTIONS);
+  const [questions, setQuestions] = useState<Question[]>([]);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [answers, setAnswers] = useState<Record<number, number | null>>({});
   const [states, setStates] = useState<Record<number, QuestionState>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [startTime, setStartTime] = useState<number>(() => Date.now());
+  const [warnings, setWarnings] = useState(0);
+  const [loading, setLoading] = useState(true); // Local loading state for questions/session
 
   useEffect(() => {
-    if (!user) {
+    if (!authLoading && !user) {
       router.push('/login');
       return;
     }
-  }, [user, router]);
 
-  useEffect(() => {
+    if (!user) return; // Guard clause for when user is null but authLoading is false
+
     // Initial visit state
     setStates(prev => ({ ...prev, 0: prev[0] || 'visited' }));
     
+    // Attempt to load saved session from local storage
+    const savedSession = localStorage.getItem(`evalsys_testSession_${user.id}`);
+    if (savedSession) {
+      try {
+        const parsed = JSON.parse(savedSession);
+        if (parsed.answers) setAnswers(parsed.answers);
+        if (parsed.states) setStates(parsed.states);
+        if (parsed.currentIdx) setCurrentIdx(parsed.currentIdx);
+        if (parsed.startTime) setStartTime(parsed.startTime);
+      } catch (e) {
+        console.error("Could not parse saved test session", e);
+      }
+    }
+
     // Simulate API fetch
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
     fetch(`${apiUrl}/api/tests/questions`)
       .then(res => res.json())
       .then(data => {
-        if (data && data.length > 0) setQuestions(data);
+        if (data && data.length > 0) {
+          setQuestions(data);
+        } else {
+          setQuestions(DUMMY_QUESTIONS); // Fallback to dummy questions
+        }
       })
-      .catch(err => console.error("Using fallback questions"));
-  }, []);
+      .catch(err => {
+        console.error("Error fetching questions, using fallback questions:", err);
+        setQuestions(DUMMY_QUESTIONS); // Fallback to dummy questions
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, [user, router, authLoading]);
+
+  // Save session state to localStorage on changes
+  useEffect(() => {
+    if (user && Object.keys(answers).length > 0) {
+      localStorage.setItem(`evalsys_testSession_${user.id}`, JSON.stringify({
+        answers, states, currentIdx, startTime
+      }));
+    }
+  }, [answers, states, currentIdx, startTime, user]);
+
+  // Anti-cheat: Tab Switch Detection
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        setWarnings(w => {
+          const newWarnings = w + 1;
+          if (newWarnings >= 3) {
+            toast.error("Maximum tab switches exceeded. Test auto-submitting.", { duration: 5000 });
+            submitTest();
+          } else {
+            toast.warning(`WARNING: Please do not switch tabs during the test. You have ${3 - newWarnings} warnings left.`, { duration: 4000 });
+          }
+          return newWarnings;
+        });
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [questions, answers, user]); // Depend on state needed for auto-submit
 
   const handleOptionSelect = (optIdx: number) => {
     setAnswers(prev => ({ ...prev, [currentIdx]: optIdx }));
@@ -64,36 +131,79 @@ export default function TestPage() {
   };
 
   const submitTest = async () => {
-    if (!user) return;
     setIsSubmitting(true);
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
     
-    const payload = {
-      userId: user.id, // Use actual logged in user's ID
-      answers: questions.map((q, idx) => ({
-        questionId: q._id,
-        selectedOptionIndex: answers[idx] ?? null,
-        timeSpentSeconds: 60, // Mock time spent
-      }))
-    };
+    if (!user) {
+      toast.error('Authentication error. Please login again.');
+      setIsSubmitting(false);
+      router.push('/login');
+      return;
+    }
+
+    const timeSpentTotal = Math.floor((Date.now() - startTime) / 1000);
+    const answeredQuestionCount = Object.keys(answers).length;
+    const avgTimePerAnsweredQuestion = answeredQuestionCount > 0 ? Math.floor(timeSpentTotal / answeredQuestionCount) : 0;
+
+    const formattedAnswers = questions.map((q, idx) => ({
+      questionId: q._id,
+      selectedOptionIndex: answers[idx] ?? null,
+      // Assign average time to answered questions, or a default for unanswered
+      timeSpentSeconds: answers[idx] !== undefined ? avgTimePerAnsweredQuestion : 5, 
+    }));
 
     try {
-      const res = await fetch('http://localhost:5000/api/tests/submit', {
+      const res = await fetch(`${apiUrl}/api/tests/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({
+          userId: user.id, // Now uses real Firebase UID
+          answers: formattedAnswers,
+          timeSpent: timeSpentTotal
+        })
       });
       if (res.ok) {
+        localStorage.removeItem(`evalsys_testSession_${user.id}`);
+        toast.success("Test submitted successfully!");
         router.push('/dashboard');
       } else {
-        // Fallback to fake submission redirect if backend is down
+        localStorage.removeItem(`evalsys_testSession_${user.id}`);
+        toast.error("Error submitting test. Returning to dashboard.");
         router.push('/dashboard');
       }
     } catch (e) {
+      toast.error("Network error. Returning to dashboard.");
       router.push('/dashboard');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const question = questions[currentIdx];
+
+  // If still checking auth, show loader
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  // If user is not logged in after auth check, redirect (handled by useEffect)
+  if (!user) {
+    return null; // Or a simple message
+  }
+
+  // If questions are still loading, show loader
+  if (loading || questions.length === 0) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
+        <div className="text-secondary font-medium animate-pulse">Loading questions...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -118,7 +228,7 @@ export default function TestPage() {
               <div dangerouslySetInnerHTML={{ __html: question?.text || '' }} className="prose max-w-none text-foreground" />
               
               <div className="mt-8 space-y-3">
-                {question?.options.map((opt, i) => (
+                {questions[currentIdx]?.options.map((opt: string, i: number) => (
                   <label 
                     key={i} 
                     className={`flex items-start gap-3 p-4 border rounded-lg cursor-pointer transition-all ${

@@ -4,6 +4,8 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Edit2, Trash2, Plus } from 'lucide-react';
+import { toast } from 'sonner';
+import { Skeleton } from '@/components/ui/Skeleton';
 
 interface Question {
   _id: string;
@@ -35,7 +37,7 @@ export default function AdminQuestionsPage() {
       const data = await res.json();
       if (!data.error) setQuestions(data);
     } catch (err) {
-      console.error("Failed to fetch questions", err);
+      toast.error("Failed to fetch questions from the server.");
     } finally {
       setLoading(false);
     }
@@ -81,9 +83,10 @@ export default function AdminQuestionsPage() {
         body: JSON.stringify(payload)
       });
       setIsModalOpen(false);
+      toast.success(editingQuestion ? "Question updated successfully!" : "New question added!");
       fetchQuestions();
     } catch (err) {
-      console.error("Save failed", err);
+      toast.error("Failed to save the question. Please try again.");
     }
   };
 
@@ -92,9 +95,10 @@ export default function AdminQuestionsPage() {
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
       await fetch(`${apiUrl}/api/tests/questions/${id}`, { method: 'DELETE' });
+      toast.success("Question deleted.");
       fetchQuestions();
     } catch (err) {
-      console.error("Delete failed", err);
+      toast.error("Failed to delete the question.");
     }
   };
 
@@ -124,7 +128,14 @@ export default function AdminQuestionsPage() {
               </thead>
               <tbody className="divide-y divide-border">
                 {loading ? (
-                  <tr><td colSpan={4} className="px-6 py-8 text-center text-secondary">Loading questions...</td></tr>
+                  Array.from({ length: 4 }).map((_, i) => (
+                    <tr key={i}>
+                      <td className="px-6 py-4"><Skeleton className="h-4 w-20" /></td>
+                      <td className="px-6 py-4"><Skeleton className="h-6 w-16" /></td>
+                      <td className="px-6 py-4"><Skeleton className="h-4 w-64" /></td>
+                      <td className="px-6 py-4 text-right"><Skeleton className="h-8 w-16 ml-auto" /></td>
+                    </tr>
+                  ))
                 ) : questions.length === 0 ? (
                   <tr><td colSpan={4} className="px-6 py-8 text-center text-secondary">No questions found in database.</td></tr>
                 ) : questions.map(q => (

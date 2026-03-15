@@ -1,7 +1,9 @@
 import React from 'react';
-import { Bell, User } from 'lucide-react';
+import { Search, Bell } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
 
 export function Topbar({ title = 'Dashboard' }: { title?: string }) {
+  const { user } = useAuth();
   return (
     <header className="h-16 bg-card border-b flex items-center justify-between px-6 shadow-sm z-10 sticky top-0">
       <div>
@@ -15,11 +17,10 @@ export function Topbar({ title = 'Dashboard' }: { title?: string }) {
         </button>
         <div className="flex items-center gap-3 border-l pl-4 ml-2">
           <div className="flex flex-col items-end hidden sm:flex">
-            <span className="text-sm font-medium">Alex Student</span>
-            <span className="text-xs text-secondary">Premium Tier</span>
+            <span className="text-sm font-medium mr-2 hidden md:block">{user?.name || 'Loading...'}</span>
           </div>
-          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
-            <User size={20} />
+          <div className="w-8 h-8 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-sm">
+            {user?.name ? user.name.charAt(0).toUpperCase() : '?'}
           </div>
         </div>
       </div>

@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Search, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
+import { Skeleton } from '@/components/ui/Skeleton';
 
 interface StudentAnalytic {
   id: string;
@@ -75,7 +76,15 @@ export default function AdminStudentsPage() {
               </thead>
               <tbody className="divide-y divide-border">
                 {loading ? (
-                  <tr><td colSpan={5} className="px-6 py-8 text-center text-secondary">Loading students...</td></tr>
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <tr key={i}>
+                      <td className="px-6 py-4"><Skeleton className="h-6 w-32" /></td>
+                      <td className="px-6 py-4"><Skeleton className="h-4 w-48" /></td>
+                      <td className="px-6 py-4"><Skeleton className="h-4 w-12 mx-auto" /></td>
+                      <td className="px-6 py-4"><Skeleton className="h-6 w-16 mx-auto" /></td>
+                      <td className="px-6 py-4 text-right"><Skeleton className="h-8 w-24 ml-auto" /></td>
+                    </tr>
+                  ))
                 ) : filteredStudents.length === 0 ? (
                   <tr><td colSpan={5} className="px-6 py-8 text-center text-secondary">No students found.</td></tr>
                 ) : filteredStudents.map(student => (

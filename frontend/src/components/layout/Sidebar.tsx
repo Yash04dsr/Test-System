@@ -2,11 +2,18 @@
 
 import React from 'react';
 import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation'; // Added imports
 import { LayoutDashboard, FileText, Settings, LogOut, ShieldCheck } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 export function Sidebar() {
+  const pathname = usePathname(); // Added line
   const { user, logout } = useAuth();
+  const router = useRouter(); // Added line
+
+  const handleLogout = async () => { // Added function
+    await logout();
+  };
 
   return (
     <aside className="w-64 bg-primary text-primary-foreground min-h-screen flex flex-col hidden md:flex">

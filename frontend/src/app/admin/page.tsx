@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Users, BookOpen, Target, TrendingUp } from 'lucide-react';
+import { Skeleton } from '@/components/ui/Skeleton';
 
 export default function AdminDashboardPage() {
   const [metrics, setMetrics] = useState({
@@ -42,7 +43,20 @@ export default function AdminDashboardPage() {
   }, []);
 
   if (loading) {
-    return <div className="animate-pulse flex space-x-4">Loading metrics...</div>;
+    return (
+      <div className="space-y-6">
+        <div>
+          <Skeleton className="h-8 w-64 mb-2" />
+          <Skeleton className="h-4 w-96" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <Skeleton className="h-32 w-full" />
+          <Skeleton className="h-32 w-full" />
+          <Skeleton className="h-32 w-full" />
+          <Skeleton className="h-32 w-full" />
+        </div>
+      </div>
+    );
   }
 
   return (

@@ -11,20 +11,28 @@ export default function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    // If no user or not an admin, redirect
-    if (!user) {
-      router.push('/login');
-    } else if (user.role !== 'admin') {
-      router.push('/dashboard');
+    if (!loading) {
+      // If no user or not an admin, redirect
+      if (!user) {
+        router.push('/login');
+      } else if (user.role !== 'admin') {
+        router.push('/dashboard');
+      }
     }
-  }, [user, router]);
+  }, [user, loading, router]);
 
   // Keep rendering minimal until auth is verified
-  if (!user || user.role !== 'admin') return null;
+  if (loading || !user || user.role !== 'admin') {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen bg-background text-foreground">

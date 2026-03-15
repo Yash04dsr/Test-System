@@ -8,6 +8,8 @@ import { Sidebar } from '@/components/layout/Sidebar';
 import { Topbar } from '@/components/layout/Topbar';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { motion } from 'framer-motion';
 import {
   Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer,
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
@@ -32,7 +34,7 @@ const MOCK_PIE = [
 const PIE_COLORS = ['#10b981', '#f59e0b', '#ef4444'];
 
 export default function DashboardPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   
   const [data, setData] = useState({
@@ -43,25 +45,30 @@ export default function DashboardPage() {
     performanceTrends: MOCK_LINE,
     strengths: ['Geometry', 'Physics', 'Algebra'],
     weaknesses: ['Probability', 'Calculus'],
-    testHistory: [] as any[]
+    testHistory: [] as { date: string, score: number, totalQuestions: number, accuracy: number }[],
+    aiStudyPlan: 'Loading AI generated strategy...'
   });
 
   const [availableTopics, setAvailableTopics] = useState<string[]>([]);
 
+  const [loading, setLoading] = useState(true);
+
   useEffect(() => {
-    if (!user) {
+    if (!authLoading && !user) {
       router.push('/login');
       return;
     }
 
-    if (user.role === 'admin') {
+    if (user && user.role === 'admin') { // Added user check here to prevent error if user is null
       router.push('/admin');
       return;
     }
 
+    if (!user) return; // Guard clause before fetch
+
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
     
-    // Fetch analytics
+    // Fetch analytics - user is guaranteed to be truthy due to earlier check
     fetch(`${apiUrl}/api/analytics/dashboard/${user.id}`)
       .then(res => res.json())
       .then(resData => {
@@ -69,21 +76,29 @@ export default function DashboardPage() {
           setData(resData);
         }
       })
-      .catch(err => console.error("Using fallback analytics data"));
+      .catch(err => console.error("Using fallback analytics data"))
+      .finally(() => setLoading(false));
 
     // Fetch available tests
     fetch(`${apiUrl}/api/tests/questions`)
       .then(res => res.json())
       .then(qData => {
         if (Array.isArray(qData)) {
-          const topics = Array.from(new Set(qData.map((q: any) => q.topic)));
+          const topics = Array.from(new Set(qData.map((q: { topic: string }) => q.topic))) as string[];
           setAvailableTopics(topics as string[]);
         }
       })
       .catch(err => console.error("Could not fetch available tests"));
-  }, [user, router]);
+  }, [user, authLoading]);
 
-  if (!user) return null; // Prevent flash of unauthorized content
+  // Only render if auth is fully initialized and user exists
+  if (authLoading || !user) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen bg-background text-foreground">
@@ -106,12 +121,14 @@ export default function DashboardPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             
             {/* Radar Chart (Skill Balance) */}
-            <Card className="col-span-1 lg:col-span-1 border-border shadow-sm">
+            <motion.div className="col-span-1 lg:col-span-1" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.1 }}>
+            <Card className="border-border shadow-sm h-full">
               <CardHeader>
                 <CardTitle>Skill Balance</CardTitle>
                 <p className="text-xs text-secondary-foreground">Topic-wise accuracy distribution</p>
               </CardHeader>
               <CardContent className="h-[300px]">
+                {loading ? <Skeleton className="w-full h-full rounded-full" /> : (
                 <ResponsiveContainer width="100%" height="100%">
                   <RadarChart cx="50%" cy="50%" outerRadius="70%" data={data.radarData}>
                     <PolarGrid stroke="#e2e8f0" />
@@ -120,16 +137,20 @@ export default function DashboardPage() {
                     <Radar name="Accuracy" dataKey="A" stroke="#0f172a" fill="#0f172a" fillOpacity={0.2} />
                   </RadarChart>
                 </ResponsiveContainer>
+                )}
               </CardContent>
             </Card>
+            </motion.div>
 
             {/* Line Chart (Performance Trends) */}
-            <Card className="col-span-1 lg:col-span-2 border-border shadow-sm">
+            <motion.div className="col-span-1 lg:col-span-2" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.2 }}>
+            <Card className="border-border shadow-sm h-full">
               <CardHeader>
                 <CardTitle>Performance Trends</CardTitle>
                 <p className="text-xs text-secondary-foreground">Scores over time</p>
               </CardHeader>
               <CardContent className="h-[300px]">
+                {loading ? <Skeleton className="w-full h-full" /> : (
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={data.performanceTrends} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
@@ -139,16 +160,20 @@ export default function DashboardPage() {
                     <Line type="monotone" dataKey="score" stroke="#0f172a" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
                   </LineChart>
                 </ResponsiveContainer>
+                )}
               </CardContent>
             </Card>
+            </motion.div>
 
             {/* Pie Chart (Difficulty Mapping) */}
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.3 }}>
             <Card className="col-span-1 border-border shadow-sm">
               <CardHeader>
                 <CardTitle>Difficulty Mapping</CardTitle>
                 <p className="text-xs text-secondary-foreground">Accuracy across difficulty levels</p>
               </CardHeader>
               <CardContent className="h-[250px]">
+                {loading ? <Skeleton className="w-full h-full rounded-full" /> : (
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
@@ -169,6 +194,7 @@ export default function DashboardPage() {
                     <Legend iconType="circle" />
                   </PieChart>
                 </ResponsiveContainer>
+                )}
               </CardContent>
             </Card>
 
@@ -206,8 +232,18 @@ export default function DashboardPage() {
                     </div>
                   </div>
                 </div>
+
+                <div className="mt-8 p-4 bg-primary/10 border border-primary/20 rounded-lg">
+                  <h4 className="text-sm font-bold text-primary mb-2 flex items-center gap-2">
+                    <span className="text-xl">✨</span> AI Strategy Engine
+                  </h4>
+                  <p className="text-foreground text-sm leading-relaxed">
+                    {data.aiStudyPlan}
+                  </p>
+                </div>
               </CardContent>
             </Card>
+            </motion.div>
             
           </div>
 
